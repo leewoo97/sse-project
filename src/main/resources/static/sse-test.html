@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <title>SSE / API Test Console (Fixed)</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 12px;
+        }
+        select, input, textarea, button {
+            width: 100%;
+            margin-bottom: 6px;
+            font-family: monospace;
+        }
+        textarea {
+            height: 120px;
+        }
+        button {
+            margin-top: 6px;
+        }
+        pre {
+            background: #111;
+            color: #0f0;
+            padding: 10px;
+            height: 350px;
+            overflow: auto;
+        }
+    </style>
+</head>
+<body>
+
+<h2>SSE / API Test Console</h2>
+
+<label>HTTP Method</label>
+<select id="method">
+    <option>GET</option>
+    <option>POST</option>
+    <option>PUT</option>
+    <option>DELETE</option>
+</select>
+
+<label>API URL</label>
+<input id="url" value="/api/statistics/object/internalnetwork/table" />
+
+<label>Request Body (JSON → Query for SSE)</label>
+<textarea id="body">
+{
+  "limit": 10,
+  "startDate": "202509130000",
+  "endDate": "202509140000",
+  "scale": "5min"
+}
+</textarea>
+
+<button onclick="send()">Send</button>
+<button onclick="disconnect()">Disconnect</button>
+<button onclick="clearLog()">Clear</button>
+
+<pre id="log"></pre>
+
+<script>
+    let es = null;
+    let refreshKey = 0;
+
+    function log(msg) {
+        const el = document.getElementById("log");
+        el.textContent += msg + "\n";
+        el.scrollTop = el.scrollHeight;
+    }
+
+    function clearLog() {
+        document.getElementById("log").textContent = "";
+    }
+
+    function disconnect() {
+        if (es) {
+            es.close();
+            es = null;
+            log("⏹ SSE disconnected");
+        }
+    }
+
+    function buildSseUrl(baseUrl, body) {
+        const params = new URLSearchParams(body || {});
+        params.append("_refresh", ++refreshKey);
+        return `${baseUrl}?${params.toString()}`;
+    }
+
+    function send() {
+        disconnect();
+
+        const method = document.getElementById("method").value;
+        const baseUrl = document.getElementById("url").value.trim();
+        const bodyText = document.getElementById("body").value.trim();
+
+        let body;
+        try {
+            body = bodyText ? JSON.parse(bodyText) : {};
+        } catch {
+            alert("Invalid JSON body");
+            return;
+        }
+
+        log(`▶ ${method} ${baseUrl}`);
+
+        /* ======================
+           SSE (GET only)
+        ====================== */
+        if (method === "GET") {
+            const sseUrl = buildSseUrl(baseUrl, body);
+            log(`▶ SSE CONNECT ${sseUrl}`);
+
+            es = new EventSource(sseUrl);
+
+            es.addEventListener("connect", e => {
+                log("🔗 connect: " + (e.data || ""));
+            });
+
+            // 서버에서 보낸 실제 이벤트 이름과 일치시킵니다.
+            es.addEventListener("현재 로딩율", e => {
+                log("⏳ 현재 로딩율: " + e.data);
+            });
+
+            es.addEventListener("결과값", e => {
+                log("✅ 결과값 수신");
+                try {
+                    log(JSON.stringify(JSON.parse(e.data), null, 2));
+                } catch {
+                    log(e.data);
+                }
+                // 필요하면 클라이언트에서 연결을 닫습니다.
+                es.close();
+                es = null;
+                log("⏹ SSE closed by client");
+            });
+
+            // 서버에서 보낸 'error'라는 이름의 이벤트(payload)를 별도로 처리할 수 있습니다.
+            es.addEventListener("error", e => {
+                // 이 핸들러는 서버가 의도적으로 보낸 'error'라는 named event와
+                // 네트워크/커넥션 에러(onerror) 이벤트 모두에 걸릴 수 있으니,
+                // e.data가 있으면 서버가 보낸 에러 메시지로 간주합니다.
+                if (e && e.data) log("🚨 server error event: " + e.data);
+            });
+
+            // onerror는 연결이 닫히거나 네트워크 오류가 발생했을 때도 호출됩니다.
+            es.onerror = (ev) => {
+                if (es && es.readyState === EventSource.CLOSED) {
+                    log("⏹ SSE closed by server");
+                } else {
+                    log("⚠️ SSE error (server closed or network issue)");
+                }
+            };
+
+            return;
+        }
+
+        /* ======================
+           REST (non-SSE)
+        ====================== */
+        fetch(baseUrl, {
+            method,
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: Object.keys(body).length ? JSON.stringify(body) : null
+        })
+            .then(res => res.text())
+            .then(text => {
+                try {
+                    log(JSON.stringify(JSON.parse(text), null, 2));
+                } catch {
+                    log(text);
+                }
+            })
+            .catch(err => log("❌ " + err));
+    }
+</script>
+
+</body>
+</html>
