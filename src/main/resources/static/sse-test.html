@@ -1,180 +1,445 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8" />
-    <title>SSE / API Test Console (Fixed)</title>
-    <style>
-        body {
-            font-family: monospace;
-            padding: 12px;
-        }
-        select, input, textarea, button {
-            width: 100%;
-            margin-bottom: 6px;
-            font-family: monospace;
-        }
-        textarea {
-            height: 120px;
-        }
-        button {
-            margin-top: 6px;
-        }
-        pre {
-            background: #111;
-            color: #0f0;
-            padding: 10px;
-            height: 350px;
-            overflow: auto;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <title>SSE / API Test Console</title>
+
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                   Roboto, Helvetica, Arial, sans-serif;
+      background: #fafafa;
+      padding: 16px;
+      color: #333;
+    }
+
+    h2 { margin-bottom: 6px; }
+
+    .hint {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 16px;
+    }
+
+    .endpoint {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 18px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+
+    .header { margin-bottom: 10px; }
+
+    .tag {
+      font-size: 12px;
+      color: #2563eb;
+      margin-bottom: 4px;
+    }
+
+    .summary-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+
+    .method {
+      font-weight: 700;
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: #2563eb;
+      color: #fff;
+    }
+
+    .summary {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .path {
+      font-family: monospace;
+      font-size: 13px;
+      color: #374151;
+      background: #f3f4f6;
+      padding: 4px 6px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+
+    .section-title {
+      margin-top: 14px;
+      margin-bottom: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #374151;
+    }
+
+    textarea {
+      width: 100%;
+      height: 130px;
+      font-family: monospace;
+      font-size: 13px;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid #d1d5db;
+      background: #f9fafb;
+      resize: vertical;
+      /* 너비가 부모를 넘지 않도록 수정 */
+      box-sizing: border-box; 
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    button {
+      flex: 1;
+      padding: 8px;
+      font-size: 13px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .btn-send { background: #2563eb; color: #fff; border: none; }
+    .btn-disconnect {
+      background: #fff;
+      color: #374151;
+      border: 1px solid #d1d5db;
+    }
+
+    .console-wrapper {
+      position: relative;
+      margin-top: 12px;
+    }
+
+    .console-clear {
+      position: absolute;
+      top: 6px;
+      right: 18px;
+      padding: 4px 8px;
+      font-size: 11px;
+      border-radius: 4px;
+      background: rgba(255,255,255,0.9);
+      border: 1px solid #d1d5db;
+      cursor: pointer;
+      display: none;
+    }
+
+    pre {
+      background: #111827;
+      color: #22c55e;
+      padding: 12px;
+      border-radius: 6px;
+      height: 220px;
+      overflow: auto;
+      resize: vertical;
+      font-size: 12px;
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+      /* 너비가 부모를 넘지 않도록 수정 */
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .timeline {
+      margin-top: 14px;
+      padding-left: 12px;
+      border-left: 2px solid #e5e7eb;
+      display: none;
+    }
+
+    .timeline-item {
+      position: relative;
+      margin-bottom: 10px;
+      padding-left: 14px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .timeline-item::before {
+      content: "";
+      position: absolute;
+      left: -7px;
+      top: 3px;
+      width: 8px;
+      height: 8px;
+      background: #2563eb;
+      border-radius: 50%;
+    }
+
+    .timeline-item.loading::before { background: #f59e0b; }
+    .timeline-item.response::before { background: #16a34a; }
+    .timeline-item.error::before { background: #dc2626; }
+    .timeline-item.closed::before { background: #9ca3af; }
+
+    .timeline-item.active {
+      font-weight: 600;
+    }
+  </style>
 </head>
+
 <body>
 
 <h2>SSE / API Test Console</h2>
+<div class="hint">
+  타임라인 클릭 시 해당 이벤트 데이터만 콘솔에 표시 (모든 이벤트 감지)
+</div>
 
-<label>HTTP Method</label>
-<select id="method">
-    <option>GET</option>
-    <option>POST</option>
-    <option>PUT</option>
-    <option>DELETE</option>
-</select>
-
-<label>API URL</label>
-<input id="url" value="/api/statistics/object/internalnetwork/table" />
-
-<label>Request Body (JSON → Query for SSE)</label>
-<textarea id="body">
-{
-  "limit": 10,
-  "startDate": "202509130000",
-  "endDate": "202509140000",
-  "scale": "5min"
-}
-</textarea>
-
-<button onclick="send()">Send</button>
-<button onclick="disconnect()">Disconnect</button>
-<button onclick="clearLog()">Clear</button>
-
-<pre id="log"></pre>
+<div id="endpoints"></div>
 
 <script>
-    let es = null;
-    let refreshKey = 0;
+  const HTTP_METHODS = ["get","post","put","delete","patch","options","head","trace"];
+  let refreshKey = 0;
+  let schemaStore = {};
+  const connections = {};
+  const eventStore = {};
 
-    function log(msg) {
-        const el = document.getElementById("log");
-        el.textContent += msg + "\n";
-        el.scrollTop = el.scrollHeight;
-    }
+  document.addEventListener("DOMContentLoaded", loadOpenApi);
 
-    function clearLog() {
-        document.getElementById("log").textContent = "";
-    }
+  async function loadOpenApi() {
+    const res = await fetch("/v3/api-docs?_=" + Date.now(), { cache: "no-store" });
+    const spec = await res.json();
+    schemaStore = spec.components?.schemas || {};
+    renderEndpoints(extractSseEndpoints(spec));
+  }
 
-    function disconnect() {
-        if (es) {
-            es.close();
-            es = null;
-            log("⏹ SSE disconnected");
+  function extractSseEndpoints(spec) {
+    const result = [];
+    for (const [path, item] of Object.entries(spec.paths || {})) {
+      for (const m of HTTP_METHODS) {
+        const op = item?.[m];
+        if (!op?.responses) continue;
+
+        const isSse = Object.values(op.responses).some(r =>
+          r.content && Object.keys(r.content).some(k => k.startsWith("text/event-stream"))
+        );
+
+        if (isSse) {
+          result.push({
+            path,
+            method: m.toUpperCase(),
+            parameters: op.parameters || [],
+            tag: op.tags?.[0] || "",
+            summary: op.summary || ""
+          });
         }
+      }
+    }
+    return result;
+  }
+
+  function renderEndpoints(endpoints) {
+    const root = document.getElementById("endpoints");
+    root.innerHTML = "";
+
+    endpoints.forEach((ep, idx) => {
+      eventStore[idx] = [];
+
+      const example = buildRequestExample(ep.parameters);
+
+      const div = document.createElement("div");
+      div.className = "endpoint";
+      div.innerHTML = `
+        <div class="header">
+          <div class="tag">${ep.tag}</div>
+          <div class="summary-row">
+            <span class="method">${ep.method}</span>
+            <span class="summary">${ep.summary}</span>
+          </div>
+          <div class="path">${ep.path}</div>
+        </div>
+
+        <div class="section-title">Query Parameters</div>
+        <textarea id="body-${idx}">${JSON.stringify(example, null, 2)}</textarea>
+
+        <div class="actions">
+          <button class="btn-send" onclick="connect(${idx}, '${ep.path}')">
+            Try it out (Catch All)
+          </button>
+          <button class="btn-disconnect" onclick="disconnect(${idx})">
+            Disconnect
+          </button>
+        </div>
+
+        <div class="console-wrapper">
+          <button class="console-clear" id="clear-${idx}" onclick="clearLog(${idx})">
+            Clear
+          </button>
+          <pre id="log-${idx}"></pre>
+        </div>
+
+        <div class="timeline" id="timeline-${idx}"></div>
+      `;
+      root.appendChild(div);
+    });
+  }
+
+  function addTimelineEvent(idx, type, label, payload) {
+    const tl = document.getElementById(`timeline-${idx}`);
+    tl.style.display = "block";
+
+    const eventIndex = eventStore[idx].length;
+    eventStore[idx].push(payload);
+
+    const item = document.createElement("div");
+    item.className = `timeline-item ${type}`;
+    item.innerHTML = `
+      <span class="timeline-label">${label}</span>
+      <span class="timeline-time">${new Date().toLocaleTimeString()}</span>
+    `;
+
+    item.onclick = () => showEvent(idx, eventIndex, item);
+    tl.appendChild(item);
+  }
+
+  function showEvent(idx, eventIndex, el) {
+    const log = document.getElementById(`log-${idx}`);
+    document.querySelectorAll(`#timeline-${idx} .timeline-item`).forEach(i => i.classList.remove("active"));
+    el.classList.add("active");
+    log.textContent = JSON.stringify(eventStore[idx][eventIndex], null, 2);
+  }
+
+  function clearLog(idx) {
+    document.getElementById(`log-${idx}`).textContent = "";
+    document.getElementById(`clear-${idx}`).style.display = "none";
+    const tl = document.getElementById(`timeline-${idx}`);
+    tl.innerHTML = "";
+    tl.style.display = "none";
+    eventStore[idx] = [];
+  }
+
+  function buildRequestExample(parameters) {
+    const result = {};
+    parameters.forEach(p => {
+      if (p.in !== "query") return;
+      if (p.schema?.$ref) {
+        Object.assign(result, buildExampleFromSchema(resolveRef(p.schema.$ref)));
+      } else {
+        result[p.name] = buildExampleFromSchema(p.schema);
+      }
+    });
+    return result;
+  }
+
+  function resolveRef(ref) {
+    return schemaStore[ref.replace("#/components/schemas/", "")];
+  }
+
+  function buildExampleFromSchema(schema, depth = 0) {
+    if (!schema || depth > 6) return null;
+    if (schema.$ref) return buildExampleFromSchema(resolveRef(schema.$ref), depth + 1);
+    if (schema.example !== undefined) return schema.example;
+    if (schema.default !== undefined) return schema.default;
+    if (schema.type === "object" && schema.properties) {
+      const o = {};
+      for (const k in schema.properties) {
+        o[k] = buildExampleFromSchema(schema.properties[k], depth + 1);
+      }
+      return o;
+    }
+    if (schema.type === "array") return [];
+    if (schema.type === "boolean") return false;
+    if (schema.type === "integer" || schema.type === "number") return 0;
+    return "";
+  }
+
+  async function connect(idx, path) {
+    disconnect(idx);
+
+    let body;
+    try {
+      body = JSON.parse(document.getElementById(`body-${idx}`).value);
+    } catch {
+      alert("Invalid JSON");
+      return;
     }
 
-    function buildSseUrl(baseUrl, body) {
-        const params = new URLSearchParams(body || {});
-        params.append("_refresh", ++refreshKey);
-        return `${baseUrl}?${params.toString()}`;
-    }
+    const params = new URLSearchParams(body);
+    params.append("_refresh", ++refreshKey);
 
-    function send() {
-        disconnect();
+    const log = document.getElementById(`log-${idx}`);
+    const clearBtn = document.getElementById(`clear-${idx}`);
 
-        const method = document.getElementById("method").value;
-        const baseUrl = document.getElementById("url").value.trim();
-        const bodyText = document.getElementById("body").value.trim();
+    log.textContent += "▶ CONNECTING (STREAM MODE)...\n";
+    clearBtn.style.display = "block";
 
-        let body;
-        try {
-            body = bodyText ? JSON.parse(bodyText) : {};
-        } catch {
-            alert("Invalid JSON body");
-            return;
+    try {
+      const controller = new AbortController();
+      connections[idx] = controller;
+
+      addTimelineEvent(idx, "open", "open", { status: "connected" });
+
+      const response = await fetch(`${path}?${params}`, { signal: controller.signal });
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      let buffer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        
+        if (done) {
+          log.textContent += "⏹ Server closed the stream\n";
+          disconnect(idx);
+          break;
         }
 
-        log(`▶ ${method} ${baseUrl}`);
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop();
 
-        /* ======================
-           SSE (GET only)
-        ====================== */
-        if (method === "GET") {
-            const sseUrl = buildSseUrl(baseUrl, body);
-            log(`▶ SSE CONNECT ${sseUrl}`);
+        parts.forEach(message => {
+          if (!message.trim()) return;
 
-            es = new EventSource(sseUrl);
+          let eventName = "message";
+          let dataContent = "";
 
-            es.addEventListener("connect", e => {
-                log("🔗 connect: " + (e.data || ""));
-            });
+          message.split("\n").forEach(line => {
+            if (line.startsWith("event:")) eventName = line.replace("event:", "").trim();
+            else if (line.startsWith("data:")) dataContent += line.replace("data:", "").trim();
+          });
 
-            // 서버에서 보낸 실제 이벤트 이름과 일치시킵니다.
-            es.addEventListener("현재 로딩율", e => {
-                log("⏳ 현재 로딩율: " + e.data);
-            });
+          let parsedData;
+          try { 
+            parsedData = JSON.parse(dataContent); 
+            log.textContent += `[${eventName}] ${JSON.stringify(parsedData, null, 2)}\n`;
+          } catch { 
+            parsedData = dataContent; 
+            log.textContent += `[${eventName}] ${dataContent}\n`;
+          }
 
-            es.addEventListener("결과값", e => {
-                log("✅ 결과값 수신");
-                try {
-                    log(JSON.stringify(JSON.parse(e.data), null, 2));
-                } catch {
-                    log(e.data);
-                }
-                // 필요하면 클라이언트에서 연결을 닫습니다.
-                es.close();
-                es = null;
-                log("⏹ SSE closed by client");
-            });
+          addTimelineEvent(idx, (eventName === "error" ? "error" : (eventName.includes("loading") ? "loading" : "response")), eventName, parsedData);
 
-            // 서버에서 보낸 'error'라는 이름의 이벤트(payload)를 별도로 처리할 수 있습니다.
-            es.addEventListener("error", e => {
-                // 이 핸들러는 서버가 의도적으로 보낸 'error'라는 named event와
-                // 네트워크/커넥션 에러(onerror) 이벤트 모두에 걸릴 수 있으니,
-                // e.data가 있으면 서버가 보낸 에러 메시지로 간주합니다.
-                if (e && e.data) log("🚨 server error event: " + e.data);
-            });
-
-            // onerror는 연결이 닫히거나 네트워크 오류가 발생했을 때도 호출됩니다.
-            es.onerror = (ev) => {
-                if (es && es.readyState === EventSource.CLOSED) {
-                    log("⏹ SSE closed by server");
-                } else {
-                    log("⚠️ SSE error (server closed or network issue)");
-                }
-            };
-
-            return;
-        }
-
-        /* ======================
-           REST (non-SSE)
-        ====================== */
-        fetch(baseUrl, {
-            method,
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: Object.keys(body).length ? JSON.stringify(body) : null
-        })
-            .then(res => res.text())
-            .then(text => {
-                try {
-                    log(JSON.stringify(JSON.parse(text), null, 2));
-                } catch {
-                    log(text);
-                }
-            })
-            .catch(err => log("❌ " + err));
+          if (eventName === "response") {
+            disconnect(idx);
+          }
+        });
+        log.scrollTop = log.scrollHeight;
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        log.textContent += "⚠ SSE error\n";
+        addTimelineEvent(idx, "error", "error", { error: true });
+        disconnect(idx);
+      }
     }
+  }
+
+  function disconnect(idx) {
+    if (connections[idx]) {
+      if (connections[idx].abort) connections[idx].abort();
+      else if (connections[idx].close) connections[idx].close();
+      
+      connections[idx] = null;
+      document.getElementById(`log-${idx}`).textContent += "⏹ Disconnected\n";
+      addTimelineEvent(idx, "closed", "closed", { closed: true });
+    }
+  }
 </script>
 
 </body>
